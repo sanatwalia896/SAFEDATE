@@ -24,7 +24,7 @@ class DateAnalyzer:
         Analyze this conversation for signs of manipulation:
         ---\n{conversation}\n---
         Detect gaslighting, love bombing, white-knighting.
-        Return ONLY a strict JSON object (no markdown) with keys, DONT RETURN ANY EXTRA TEXT EXCEPT THE JSON OF THE FOLOWING FORMAT:
+        Return ONLY a strict JSON object (no markdown) with keys:
         manipulations_detected (array of strings), confidence (0-100), explanation.
         Example structure:
         {{"manipulations_detected":["gaslighting"],"confidence":85,"explanation":"..."}}

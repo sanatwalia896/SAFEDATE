@@ -1,5 +1,5 @@
-from mcp import Tool, ErrorData, McpError, INVALID_PARAMS, INTERNAL_ERROR
-from mcp.types import ImageContent
+from mcp import ErrorData, McpError
+from mcp.types import ImageContent, INVALID_PARAMS, INTERNAL_ERROR
 from pydantic import BaseModel, Field
 from typing import Dict, Any
 from groq import Groq
@@ -14,22 +14,19 @@ class TextVibeCheckerInput(BaseModel):
     messages: str = Field(..., min_length=1, max_length=1000, description="Conversation text to analyze")
     raw: bool = Field(default=False, description="Return raw analysis if True")
 
-class TextVibeChecker(Tool):
+class TextVibeChecker:  # changed to plain class
     def __init__(self, api_key: str, giphy_api_key: str, model: str = "llama3-70b-8192"):
-        super().__init__(
-            name="text_vibe_checker",
-            description="Analyze a chat for overall vibe with a shareable meme",
-            input_schema=TextVibeCheckerInput
-        )
         self.client = Groq(api_key=api_key)
         self.giphy_api_key = giphy_api_key
         self.model = model
+        self.name = "text_vibe_checker"
+        self.description = "Analyze a chat for overall vibe with a shareable meme"
         self.vibe_gifs = {
             "Flirty": ["https://media.giphy.com/media/3o6ZsX2PfqDdcZbXnC/giphy.gif"],
             "Bored": ["https://media.giphy.com/media/3o6Zt481isNVuQI1l6/giphy.gif"],
             "Manipulative": ["https://media.giphy.com/media/xT0xezQGU5xCDJuCPe/giphy.gif"],
             "Playful": ["https://media.giphy.com/media/26ufdipQqU2lhNA4g/giphy.gif"],
-            "Ghosting": ["https://media.giphy.com/media/3o6Zt6ML6BklcajjsA/giphy.gif"]
+            "Ghosting": ["https://media.giphy.com/media/3o6Zt6ML6BklcajjsA/giphy.gif"],
         }
 
     async def _fetch_giphy(self, vibe: str) -> str:
@@ -60,10 +57,10 @@ class TextVibeChecker(Tool):
         Also give:
         1. Confidence score (0-100)
         2. Short, witty one-line reason (max 15 words)
-        Respond in JSON format:
+        Respond ONLY with a valid JSON object exactly in this format and NOTHING else (no markdown, no commentary):
         {{
-            "vibe": "...",
-            "confidence": ...,
+            "vibe": "Flirty|Bored|Manipulative|Playful|Ghosting",
+            "confidence": <number>,
             "reason": "..."
         }}
         """
@@ -72,11 +69,11 @@ class TextVibeChecker(Tool):
             chat_completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a fun, witty Vibe Checker AI."},
-                    {"role": "user", "content": prompt}
+                    {"role": "system", "content": "You output ONLY strict JSON when asked. No backticks, no extra text."},
+                    {"role": "user", "content": prompt},
                 ],
                 temperature=0.8,
-                max_tokens=200
+                max_tokens=200,
             )
             return json.loads(chat_completion.choices[0].message.content)
         except (json.JSONDecodeError, KeyError, Exception) as e:
@@ -123,5 +120,5 @@ class TextVibeChecker(Tool):
             "reason": reason,
             "gif_url": gif_url,
             "meme": meme,
-            "share_text": f"My chat vibe is {vibe} 😎 ({confidence}% match) — #SafeDateVibes"
+            "share_text": f"My chat vibe is {vibe} 😎 ({confidence}% match) — #SafeDateVibes",
         }

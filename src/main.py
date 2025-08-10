@@ -1,9 +1,7 @@
 import asyncio
 import os
 from dotenv import load_dotenv
-from fastmcp import FastMCP
-from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
-from mcp.server.auth.provider import AccessToken
+from mcp.server.fastmcp import FastMCP
 from tools.text_vibe_checker import TextVibeChecker
 from tools.dm_risk_meter import DMRiskMeter
 from tools.best_restaurants_near_me import BestRestaurantsNearMe
@@ -21,42 +19,32 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 GIPHY_API_KEY = os.getenv("GIPHY_API_KEY")
-AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 MY_NUMBER = os.getenv("MY_NUMBER")
 
-assert all([GROQ_API_KEY, GOOGLE_API_KEY, TAVILY_API_KEY, GIPHY_API_KEY, AUTH_TOKEN, MY_NUMBER]), "Missing required environment variables"
-
-# Custom Bearer Auth Provider
-class SimpleBearerAuthProvider(BearerAuthProvider):
-    def __init__(self, token: str):
-        k = RSAKeyPair.generate()
-        super().__init__(public_key=k.public_key, jwks_uri=None, issuer=None, audience=None)
-        self.token = token
-
-    async def load_access_token(self, token: str) -> AccessToken | None:
-        if token == self.token:
-            return AccessToken(
-                token=token,
-                client_id="puch-client",
-                scopes=["*"],
-                expires_at=None,
-            )
-        return None
+assert all([
+    GROQ_API_KEY,
+    GOOGLE_API_KEY,
+    TAVILY_API_KEY,
+    GIPHY_API_KEY,
+    MY_NUMBER,
+]), "Missing required environment variables (ensure .env is populated)"
 
 # Initialize FastMCP server
-mcp = FastMCP(
-    name="SafeDate MCP Server",
-    auth=SimpleBearerAuthProvider(AUTH_TOKEN),
-)
+mcp = FastMCP(name="SafeDate MCP Server")
 
-# Required validate tool
-@mcp.tool
-async def validate() -> str:
-    return MY_NUMBER
+# Required validate tool (kept for compatibility with your client expectations)
+@mcp.tool(name="validate", description="Return validation number for handshake")
+async def validate() -> str:  # type: ignore
+    return MY_NUMBER  # type: ignore
 
-# Register tools dynamically
-def register_tools():
-    tools = [
+# Idempotent registration guard
+_tools_registered = False
+
+def register_tool_objects():
+    global _tools_registered
+    if _tools_registered:
+        return
+    tool_objs = [
         TextVibeChecker(GROQ_API_KEY, GIPHY_API_KEY),
         DMRiskMeter(GROQ_API_KEY),
         BestRestaurantsNearMe(GOOGLE_API_KEY, GROQ_API_KEY),
@@ -68,14 +56,35 @@ def register_tools():
         TrendyDateSpotter(TAVILY_API_KEY),
         DateMemeGenerator(GROQ_API_KEY),
     ]
-    for tool in tools:
-        mcp.register_tool(tool)
-        print(f"Registered tool: {tool.name}")  # Debug print for hackathon testing
 
-async def main():
-    print("🚀 Starting SafeDate MCP server on http://0.0.0.0:8086")
-    register_tools()
-    await mcp.run_async("streamable-http", host="0.0.0.0", port=8086)
+    def make_wrapper(o):
+        async def wrapper(**tool_args):  # type: ignore
+            # Inspector sometimes wraps real args inside a single 'tool_args' key.
+            if "tool_args" in tool_args and isinstance(tool_args["tool_args"], dict):
+                flat_args = tool_args["tool_args"]
+            else:
+                flat_args = tool_args
+            return await o.run(flat_args)
+        return wrapper
+
+    for obj in tool_objs:
+        mcp.add_tool(make_wrapper(obj), name=obj.name, description=obj.description)
+    _tools_registered = True
+
+# Ensure tools are registered at import time so `mcp dev main.py` (Inspector) sees them.
+register_tool_objects()
+
+def main_stdio():
+    print("🚀 SafeDate MCP (stdio) ready")
+    mcp.run("stdio")
+
+async def main_sse():
+    print("🚀 SafeDate MCP (SSE) starting on http://0.0.0.0:8086")
+    await mcp.run_sse_async()  # FastMCP provides this async helper
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    transport = os.getenv("TRANSPORT", "stdio").lower()
+    if transport == "sse":
+        asyncio.run(main_sse())
+    else:
+        main_stdio()

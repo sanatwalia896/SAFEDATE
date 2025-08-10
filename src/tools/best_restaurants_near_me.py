@@ -1,4 +1,9 @@
-from mcp import Tool, ErrorData, McpError, INVALID_PARAMS, INTERNAL_ERROR
+from mcp import ErrorData, McpError
+try:
+    from mcp.types import INVALID_PARAMS, INTERNAL_ERROR  # type: ignore  # noqa
+except Exception:
+    INVALID_PARAMS = -32602  # type: ignore
+    INTERNAL_ERROR = -32603  # type: ignore
 from pydantic import BaseModel, Field
 from typing import Dict, Any, List
 from groq import Groq
@@ -7,16 +12,13 @@ import httpx
 class BestRestaurantsNearMeInput(BaseModel):
     location: str = Field(..., min_length=1, description="Location for restaurant search (e.g., 'New York, NY' or '40.7128,-74.0060')")
 
-class BestRestaurantsNearMe(Tool):
+class BestRestaurantsNearMe:
     def __init__(self, google_api_key: str, groq_api_key: str, model: str = "llama3-70b-8192"):
-        super().__init__(
-            name="best_restaurants_near_me",
-            description="Find top romantic restaurants near a location using Google Places API",
-            input_schema=BestRestaurantsNearMeInput
-        )
         self.google_api_key = google_api_key
         self.groq_client = Groq(api_key=groq_api_key)
         self.model = model
+        self.name = "best_restaurants_near_me"
+        self.description = "Find top romantic restaurants near a location using Google Places API"
 
     async def _fetch_restaurants(self, location: str) -> List[Dict[str, Any]]:
         url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
@@ -49,12 +51,13 @@ class BestRestaurantsNearMe(Tool):
         3. Suggest 3 backup options if the top spots are full.
         4. Add a 'Pro Tip' for each top choice (e.g., best time to go, what to order).
         Keep it concise but exciting, like a TikTok foodie influencer.
+        Output ONLY the formatted recommendations text. No introductory or closing phrases.
         """
         try:
             completion = self.groq_client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a fun and knowledgeable foodie guide."},
+                    {"role": "system", "content": "Respond with ONLY the requested formatted content. No extra sentences."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,

@@ -1,10 +1,14 @@
-from mcp import Tool, ErrorData, McpError, INVALID_PARAMS, INTERNAL_ERROR
+from mcp import ErrorData, McpError
+try:
+    from mcp.types import INVALID_PARAMS, INTERNAL_ERROR  # type: ignore  # noqa
+except Exception:
+    INVALID_PARAMS = -32602  # type: ignore
+    INTERNAL_ERROR = -32603  # type: ignore
 from pydantic import BaseModel, Field
 from typing import Dict, Any
 import re
 from groq import Groq
-import base64
-import io
+import base64, io
 from PIL import Image
 
 class OutfitRaterInput(BaseModel):
@@ -12,15 +16,12 @@ class OutfitRaterInput(BaseModel):
     puch_image_data: str = Field(default="", description="Base64-encoded image data of the outfit")
     roast_mode: bool = Field(default=False, description="Enable roast mode for playful feedback")
 
-class OutfitRater(Tool):
+class OutfitRater:
     def __init__(self, api_key: str, model: str = "llama3-70b-8192"):
-        super().__init__(
-            name="outfit_rater",
-            description="Rate and review outfits with fashion tips and image support",
-            input_schema=OutfitRaterInput
-        )
         self.client = Groq(api_key=api_key)
         self.model = model
+        self.name = "outfit_rater"
+        self.description = "Rate and review outfits with fashion tips and image support"
 
     def _style_score(self, description: str) -> Dict[str, int]:
         desc = description.lower()
@@ -52,12 +53,13 @@ class OutfitRater(Tool):
         3. Suggest improvements for the occasion they described (if any).
         4. {tone}.
         Keep it short, fun, and Instagram-caption-worthy.
+        Output ONLY the review text (no greetings, no closing). Do NOT add markdown fences.
         """
         try:
             chat_completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a witty but professional fashion stylist."},
+                    {"role": "system", "content": "Return ONLY the review body. No extra commentary."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,

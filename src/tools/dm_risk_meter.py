@@ -1,4 +1,9 @@
-from mcp import Tool, ErrorData, McpError, INVALID_PARAMS, INTERNAL_ERROR
+from mcp import ErrorData, McpError
+try:
+    from mcp.types import INVALID_PARAMS, INTERNAL_ERROR  # type: ignore  # noqa
+except Exception:
+    INVALID_PARAMS = -32602  # type: ignore
+    INTERNAL_ERROR = -32603  # type: ignore
 from pydantic import BaseModel, Field
 from typing import Dict, Any
 from groq import Groq
@@ -8,15 +13,12 @@ class DMRiskMeterInput(BaseModel):
     dm_text: str = Field(..., min_length=1, max_length=500, description="DM text to analyze")
     raw: bool = Field(default=False, description="Return raw analysis if True")
 
-class DMRiskMeter(Tool):
+class DMRiskMeter:
     def __init__(self, api_key: str, model: str = "llama3-70b-8192"):
-        super().__init__(
-            name="dm_risk_meter",
-            description="Rate unsolicited DMs for creepiness or risk with a danger gauge",
-            input_schema=DMRiskMeterInput
-        )
         self.client = Groq(api_key=api_key)
         self.model = model
+        self.name = "dm_risk_meter"
+        self.description = "Rate unsolicited DMs for creepiness or risk with a danger gauge"
 
     async def _llm_analysis(self, dm_text: str) -> Dict[str, str]:
         prompt = f"""
@@ -30,10 +32,10 @@ class DMRiskMeter(Tool):
         1. risk_level → exactly one of the categories above
         2. three_word_summary → exactly 3 words, funny roast style (e.g., "Creepy power move", "Thirsty but harmless")
         3. reasoning → short reason why you rated it that way
-        Respond in JSON:
+        Respond ONLY with a strict JSON object and NOTHING else (no markdown, no prose):
         {{
-            "risk_level": "...",
-            "three_word_summary": "...",
+            "risk_level": "Harmless|Flirty but fine|Weird but safe|Borderline creepy|Run",
+            "three_word_summary": "word1 word2 word3",
             "reasoning": "..."
         }}
         """
@@ -42,13 +44,14 @@ class DMRiskMeter(Tool):
             chat_completion = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a witty but accurate DM safety analyst."},
+                    {"role": "system", "content": "Return ONLY strict JSON. No extra commentary."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,
                 max_tokens=300
             )
-            return json.loads(chat_completion.choices[0].message.content)
+            import json as _json
+            return _json.loads(chat_completion.choices[0].message.content)
         except (json.JSONDecodeError, KeyError, Exception) as e:
             raise McpError(ErrorData(code=INTERNAL_ERROR, message=f"LLM analysis failed: {str(e)}"))
 
@@ -64,13 +67,13 @@ class DMRiskMeter(Tool):
             return result
 
         levels = ["Harmless", "Flirty but fine", "Weird but safe", "Borderline creepy", "Run"]
-        index = levels.index(result["risk_level"]) if result["risk_level"] in levels else 0
+        index = levels.index(result.get("risk_level", levels[0])) if result.get("risk_level") in levels else 0
         gauge = "🟢" * (index + 1) + "🔴" * (4 - index)
 
         return {
-            "risk_level": result["risk_level"],
-            "three_word_summary": result["three_word_summary"],
-            "reasoning": result["reasoning"],
+            "risk_level": result.get("risk_level"),
+            "three_word_summary": result.get("three_word_summary"),
+            "reasoning": result.get("reasoning"),
             "danger_gauge": gauge,
-            "share_text": f"DM Risk: {result['risk_level']} 🚨 — {result['three_word_summary']} #SafeDateRisk"
+            "share_text": f"DM Risk: {result.get('risk_level')} 🚨 — {result.get('three_word_summary')} #SafeDateRisk"
         }

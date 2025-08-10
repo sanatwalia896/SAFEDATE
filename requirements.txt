@@ -7,3 +7,11 @@ fastmcp==0.1.0
 readabilipy==0.2.0
 markdownify==0.11.6
 beautifulsoup4==4.12.3
+mcp
+pydantic
+httpx
+pillow
+python-dotenv
+re
+json
+base64

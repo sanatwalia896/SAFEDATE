@@ -6,7 +6,7 @@ from fastmcp.server.auth.providers.bearer import BearerAuthProvider, RSAKeyPair
 from mcp.server.auth.provider import AccessToken
 from tools.text_vibe_checker import TextVibeChecker
 from tools.dm_risk_meter import DMRiskMeter
-from tools.best_restraunts_near_me import BestRestaurantsNearMe
+from tools.best_restaurants_near_me import BestRestaurantsNearMe
 from tools.outfit_rater import OutfitRater
 from tools.safety_tools import SafetyTools
 from tools.best_date_idea import BestDateIdea
@@ -70,6 +70,7 @@ def register_tools():
     ]
     for tool in tools:
         mcp.register_tool(tool)
+        print(f"Registered tool: {tool.name}")  # Debug print for hackathon testing
 
 async def main():
     print("🚀 Starting SafeDate MCP server on http://0.0.0.0:8086")

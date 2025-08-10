@@ -146,6 +146,30 @@ mcp = FastMCP(
 async def validate() -> str:
     return MY_NUMBER
 
+# --- Tool: job_finder (now smart!) ---
+# Helper to convert any tool result dict (and optional image) to MCP contents
+
+def _to_contents(tool_name: str, result: dict) -> list[TextContent | ImageContent]:
+    contents: list[TextContent | ImageContent] = []
+    # Extract image-like payloads if present (e.g., meme)
+    if isinstance(result, dict):
+        img_keys = [k for k, v in result.items() if isinstance(v, ImageContent)]
+        for k in img_keys:
+            contents.append(result[k])
+        # Prepare a compact JSON for text
+        try:
+            text_result = {k: v for k, v in result.items() if k not in img_keys}
+            text = json.dumps(text_result, ensure_ascii=False, indent=2)
+        except TypeError:
+            # Fallback if non-serializable objects are present
+            text = str(result)
+        contents.append(TextContent(type="text", text=f"{tool_name} result:\n\n{text}"))
+        return contents
+    # If it's already a list of content items or plain text
+    if isinstance(result, list):
+        return result  # type: ignore[return-value]
+    return [TextContent(type="text", text=str(result))]
+
 # --- Tool wrappers for tools/ classes ---
 
 # Best Date Idea
@@ -328,9 +352,8 @@ async def trendy_date_spotter(
 
 # --- Run MCP Server ---
 async def main():
-    port = int(os.environ.get("PORT", "8086"))
-    print(f"🚀 Starting MCP server on http://0.0.0.0:{port}")
-    await mcp.run_async("streamable-http", host="0.0.0.0", port=port)
+    print("🚀 Starting MCP server on http://0.0.0.0:8086")
+    await mcp.run_async("streamable-http", host="0.0.0.0", port=8086)
 
 if __name__ == "__main__":
     asyncio.run(main())
